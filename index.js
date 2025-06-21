@@ -120,18 +120,35 @@ app.post("/store-mobile", (req, res) => {
   });
 });
 
-// Delete specific user if status is pending
-// app.delete("/delete-pending-user", (req, res) => {
-//   const { mobileNumber } = req.body;
-//   if (!mobileNumber) return res.status(400).json({ success: false, message: "Mobile number required" });
+// Delete all pending users
+app.delete("/delete-pending-users", (req, res) => {
+  const deleteQuery = `DELETE FROM user_details WHERE LOWER(TRIM(status)) = 'pending'`;
+  db.query(deleteQuery, (err, result) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    console.log(`🗑️ Deleted ${result.affectedRows} pending users`);
+    res.status(200).json({ 
+      success: true, 
+      message: `Deleted ${result.affectedRows} pending users`,
+      deletedCount: result.affectedRows
+    });
+  });
+});
 
-//   const deleteQuery = `DELETE FROM user_details WHERE mobile_number = ? AND LOWER(TRIM(status)) = 'pending'`;
-//   db.query(deleteQuery, [mobileNumber], (err, result) => {
-//     if (err) return res.status(500).json({ success: false, message: "Database error" });
-//     if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "No pending user found" });
-//     res.status(200).json({ success: true, message: `User ${mobileNumber} deleted` });
-//   });
-// });
+// Delete specific user if status is pending
+app.delete("/delete-pending-user", (req, res) => {
+  const { mobileNumber } = req.body;
+  if (!mobileNumber) return res.status(400).json({ success: false, message: "Mobile number required" });
+
+  const deleteQuery = `DELETE FROM user_details WHERE mobile_number = ? AND LOWER(TRIM(status)) = 'pending'`;
+  db.query(deleteQuery, [mobileNumber], (err, result) => {
+    if (err) return res.status(500).json({ success: false, message: "Database error" });
+    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "No pending user found" });
+    res.status(200).json({ success: true, message: `User ${mobileNumber} deleted` });
+  });
+});
 
 // Store user details
 app.post("/store-user-details", (req, res) => {
