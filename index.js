@@ -240,7 +240,45 @@ app.post("/api/verify-pin", (req, res) => {
   });
 });
 
+// Get questions by month
+app.get("/api/questions/:month", (req, res) => {
+  const { month } = req.params;
+  
+  // Decode the month parameter in case it's URL encoded
+  const decodedMonth = decodeURIComponent(month);
+  
+  console.log(`📝 Fetching questions for month: ${decodedMonth}`);
+  
+  // Query to get questions for the specified month
+  const query = `SELECT * FROM questions WHERE month = ? ORDER BY question_id`;
+  
+  db.query(query, [decodedMonth], (err, results) => {
+    if (err) {
+      console.error("Database error:", err);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Database error", 
+        error: err.message 
+      });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: `No questions found for month: ${decodedMonth}` 
+      });
+    }
+    
+    res.status(200).json({ 
+      success: true, 
+      data: results,
+      count: results.length,
+      month: decodedMonth
+    });
+  });
+});
+
 // Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
 });
