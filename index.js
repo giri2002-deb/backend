@@ -23,7 +23,7 @@ const db = mysql.createConnection({
   host: "sql8.freesqldatabase.com",
   user: "sql8785241",
   password: "TY4g55mxyW", // Your MySQL password
-  database: "sql8785241",
+  database: "child_development",
   port: 3306,
 });
 
@@ -237,6 +237,106 @@ app.post("/api/verify-pin", (req, res) => {
     if (securityPIN === storedPin)
       res.json({ success: true, message: "PIN verified" });
     else res.json({ success: false, message: "Incorrect PIN" });
+  });
+});
+
+// Create questions table and populate with sample data
+app.post("/api/setup-questions", (req, res) => {
+  const createTableQuery = `
+    CREATE TABLE IF NOT EXISTS questions (
+      question_id INT AUTO_INCREMENT PRIMARY KEY,
+      month VARCHAR(50) NOT NULL,
+      question_text TEXT NOT NULL,
+      option_a VARCHAR(255),
+      option_b VARCHAR(255),
+      option_c VARCHAR(255),
+      option_d VARCHAR(255),
+      correct_answer CHAR(1),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  
+  db.query(createTableQuery, (err) => {
+    if (err) {
+      console.error("Error creating table:", err);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Failed to create table", 
+        error: err.message 
+      });
+    }
+    
+    // Insert sample questions
+    const sampleQuestions = [
+      {
+        month: 'Month 1',
+        question_text: 'What is the most important factor in child development?',
+        option_a: 'Nutrition',
+        option_b: 'Play and interaction',
+        option_c: 'Sleep',
+        option_d: 'All of the above',
+        correct_answer: 'D'
+      },
+      {
+        month: 'Month 1',
+        question_text: 'At what age do children typically start walking?',
+        option_a: '8-10 months',
+        option_b: '10-12 months',
+        option_c: '12-15 months',
+        option_d: '15-18 months',
+        correct_answer: 'C'
+      },
+      {
+        month: 'Month 2',
+        question_text: 'Which activity helps develop fine motor skills?',
+        option_a: 'Running',
+        option_b: 'Drawing and coloring',
+        option_c: 'Jumping',
+        option_d: 'Swimming',
+        correct_answer: 'B'
+      },
+      {
+        month: 'Month 2',
+        question_text: 'What is the recommended screen time for children under 2?',
+        option_a: '1 hour per day',
+        option_b: '2 hours per day',
+        option_c: 'No screen time except video calls',
+        option_d: 'Unlimited',
+        correct_answer: 'C'
+      }
+    ];
+    
+    const insertQuery = `
+      INSERT IGNORE INTO questions (month, question_text, option_a, option_b, option_c, option_d, correct_answer) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    
+    let insertedCount = 0;
+    sampleQuestions.forEach((question, index) => {
+      db.query(insertQuery, [
+        question.month,
+        question.question_text,
+        question.option_a,
+        question.option_b,
+        question.option_c,
+        question.option_d,
+        question.correct_answer
+      ], (err2) => {
+        if (err2) {
+          console.error("Error inserting question:", err2);
+        } else {
+          insertedCount++;
+        }
+        
+        // Send response after all questions are processed
+        if (index === sampleQuestions.length - 1) {
+          res.status(200).json({ 
+            success: true, 
+            message: `Questions table created successfully. Inserted ${insertedCount} sample questions.`
+          });
+        }
+      });
+    });
   });
 });
 
