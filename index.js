@@ -2,18 +2,19 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const mysql = require("mysql2");
-const twilio = require("twilio"); // ✅ THIS LINE IS MISSING
+const twilio = require("twilio");
 
 const app = express();
 const PORT = 5000;
 
+// Middleware - only register once
 app.use(cors());
 app.use(bodyParser.json());
 
 const db = mysql.createConnection({
   host: "sql8.freesqldatabase.com",
   user: "sql8785241",
-  password: "TY4g55mxyW", // Your MySQL password
+  password: "TY4g55mxyW",
   database: "sql8785241",
   port: 3306,
 });
@@ -25,157 +26,30 @@ db.connect((err) => {
     console.log("✅ Connected to MySQL");
   }
 });
-//send otp
 
+// Twilio configuration
 const accountSid = "AC2386df8e3b1afeae7dad935f23b51ab0";
 const authToken = "76b1d1984df91680aa99a778653fc462";
 const twilioNumber = "+12178035187";
 const client = twilio(accountSid, authToken);
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-
-// Temporary in-memory store (for demo only)
 const otpStore = {}; // { "mobileNumber": "1234" }
 const registeredMobiles = new Set(); // [ "9876543210" ]
 
-// Route 2: Send 4-digit OTP
-app.post("/send-otp", async (req, res) => {
-  const { mobileNumber } = req.body;
-
-  if (!mobileNumber) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Mobile number required" });
-  }
-
-  const otp = Math.floor(1000 + Math.random() * 9000).toString(); // 4-digit OTP
-  console.log(`Generated OTP for ${mobileNumber}: ${otp}`);
-
-  try {
-    await client.messages.create({
-      body: `Your OTP is: ${otp}`,
-      from: twilioNumber,
-      to: `+91${mobileNumber}`,
-    });
-
-    otpStore[mobileNumber] = otp;
-    res.json({ success: true, message: "OTP sent successfully" });
-  } catch (error) {
-    console.error("Twilio Error:", error);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to send OTP",
-        error: error.message,
-      });
-  }
-});
-
-// Route 3: Verify OTP
-app.post("/verify-otp", (req, res) => {
-  const { mobileNumber, otp } = req.body;
-
-  if (!mobileNumber || !otp) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Mobile number and OTP required" });
-  }
-
-  if (otpStore[mobileNumber] === otp) {
-    delete otpStore[mobileNumber]; // Clear OTP
-    return res.json({ success: true, message: "OTP verified successfully" });
-  }
-
-  return res.status(400).json({ success: false, message: "Invalid OTP" });
-});
-
-//---------------------------------------------------//
-
-app.post("/store-mobile", (req, res) => {
-  const deleteQuery = `DELETE FROM user_details WHERE status = 'pending'`;
-
-  db.query(deleteQuery, (err, result) => {
-    if (err) {
-      console.error("❌ Delete error:", err);
-      return res
-        .status(500)
-        .json({
-          success: false,
-          message: "Database error while deleting pending users",
-        });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `${result.affectedRows} pending users deleted successfully`,
-    });
-  });
-  const { mobileNumber } = req.body;
-
-  if (!mobileNumber) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Mobile number is required" });
-  }
-
-  const checkQuery = `SELECT * FROM user_details WHERE mobile_number = ?`;
-
-  db.query(checkQuery, [mobileNumber], (err, results) => {
-    if (err) {
-      console.error("❌ Database check error:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Database error" });
-    }
-
-    if (results.length > 0) {
-      return res.status(200).json({
-        success: false,
-        message: "Mobile number already exists. Please login.",
-        userExists: true,
-      });
-    }
-
-    const insertQuery = `INSERT INTO user_details (mobile_number) VALUES (?)`;
-
-    db.query(insertQuery, [mobileNumber], (insertErr) => {
-      if (insertErr) {
-        console.error("❌ Insert error:", insertErr);
-        return res
-          .status(500)
-          .json({ success: false, message: "Insert error" });
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Mobile number stored successfully",
-      });
-    });
-  });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+// Route 1: Delete pending users
 app.delete("/delete-pending-users", (req, res) => {
   const deleteQuery = `DELETE FROM user_details WHERE LOWER(TRIM(status)) = 'pending'`;
 
   db.query(deleteQuery, (deleteErr, deleteResult) => {
     if (deleteErr) {
       console.error("❌ Delete error:", deleteErr);
-      return res
-        .status(500)
-        .json({
-          success: false,
-          message: "Database error while deleting pending users",
-        });
+      return res.status(500).json({
+        success: false,
+        message: "Database error while deleting pending users",
+      });
     }
 
     console.log(`🗑️ Deleted ${deleteResult.affectedRows} pending users`);
-
     return res.status(200).json({
       success: true,
       message: `${deleteResult.affectedRows} pending users deleted successfully`,
@@ -183,7 +57,7 @@ app.delete("/delete-pending-users", (req, res) => {
   });
 });
 
-// ✅ POST: Store mobile number
+// Route 2: Store mobile number (single implementation)
 app.post("/store-mobile", (req, res) => {
   const { mobileNumber } = req.body;
 
@@ -227,22 +101,57 @@ app.post("/store-mobile", (req, res) => {
   });
 });
 
-// ✅ Dummy Send OTP
-app.post("/send-otp", (req, res) => {
+// Route 3: Send OTP (single implementation)
+app.post("/send-otp", async (req, res) => {
   const { mobileNumber } = req.body;
 
-  // Replace with Twilio or real service
   if (!mobileNumber) {
     return res
       .status(400)
-      .json({ success: false, message: "Mobile number is required" });
+      .json({ success: false, message: "Mobile number required" });
   }
 
-  console.log(`📨 OTP sent to ${mobileNumber}`);
-  res.status(200).json({ success: true, message: "OTP sent successfully" });
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  console.log(`Generated OTP for ${mobileNumber}: ${otp}`);
+
+  try {
+    await client.messages.create({
+      body: `Your OTP is: ${otp}`,
+      from: twilioNumber,
+      to: `+91${mobileNumber}`,
+    });
+
+    otpStore[mobileNumber] = otp;
+    res.json({ success: true, message: "OTP sent successfully" });
+  } catch (error) {
+    console.error("Twilio Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send OTP",
+      error: error.message,
+    });
+  }
 });
 
-// ✅ 2. Update User Details
+// Route 4: Verify OTP
+app.post("/verify-otp", (req, res) => {
+  const { mobileNumber, otp } = req.body;
+
+  if (!mobileNumber || !otp) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number and OTP required" });
+  }
+
+  if (otpStore[mobileNumber] === otp) {
+    delete otpStore[mobileNumber];
+    return res.json({ success: true, message: "OTP verified successfully" });
+  }
+
+  return res.status(400).json({ success: false, message: "Invalid OTP" });
+});
+
+// Route 5: Update User Details
 app.post("/store-user-details", (req, res) => {
   const {
     mobileNumber,
@@ -272,19 +181,7 @@ app.post("/store-user-details", (req, res) => {
       aadhar_number = ?, 
       age_category = ?
     WHERE mobile_number = ?
-  `; //table change for unique okay
-  //   const sql = `
-  //   INSERT INTO user_details (
-  //     full_name,
-  //     gender,
-  //     dob,
-  //     verified_proof,
-  //     school_id,
-  //     aadhar_number,
-  //     age_category,
-  //     mobile_number
-  //   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  // `;
+  `;
 
   const values = [
     fullName,
@@ -315,7 +212,7 @@ app.post("/store-user-details", (req, res) => {
   });
 });
 
-// ✅ 3. Set Security PIN (Plain Text Storage)
+// Route 6: Set Security PIN
 app.post("/set-security-pin", (req, res) => {
   const { mobileNumber, pin } = req.body;
 
@@ -348,9 +245,7 @@ app.post("/set-security-pin", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+// Route 7: Get questions by month
 app.get("/api/questions/:month", (req, res) => {
   const month = req.params.month;
   db.query(
@@ -377,17 +272,14 @@ app.get("/api/questions/:month", (req, res) => {
 
       const questions = domains
         .map((key) => ({ domain: key, question: row[key] }))
-        .filter((q) => !!q.question); // remove empty
+        .filter((q) => !!q.question);
 
       res.json({ month, questions });
     },
   );
 });
 
-//2
-// Inside server.js
-
-// Inside server.js
+// Route 8: Submit answers
 app.post("/submit-answers", (req, res) => {
   const { username, mobileNumber, answers } = req.body;
 
@@ -446,52 +338,53 @@ app.post("/submit-answers", (req, res) => {
     res.json({ success: true, message: "Answers submitted successfully" });
   });
 });
-//all user show
+
+// Route 9: Get all users
 app.get("/api/all-users", (req, res) => {
   const query = "SELECT * FROM user_details ORDER BY id ASC";
   db.query(query, (err, results) => {
     if (err) return res.status(500).json({ message: "Database error" });
     res.json(results);
-    console.log(res.json(results));
   });
 });
-//3)
-app.get("/api/user-domain-answers/:mobile", (req, res) => {
-  const { mobile } = req.params;
 
-  const query =
-    "SELECT * FROM user_domain_answers WHERE mobileNumber = ? LIMIT 1";
-  db.query(query, [mobile], (err, result) => {
+// Route 10: Get user domain answers
+app.get("/api/user-domain-answers/:mobileNumber", (req, res) => {
+  const { mobileNumber } = req.params;
+
+  const query = "SELECT * FROM user_domain_answers WHERE mobileNumber = ?";
+  db.query(query, [mobileNumber], (err, results) => {
     if (err) {
       console.error("DB error:", err);
       return res.status(500).json({ error: "Database error" });
     }
-    if (result.length === 0) {
+
+    if (results.length === 0) {
       return res.status(404).json({ error: "No data found" });
     }
-    res.json(result[0]);
+
+    res.json(results[0]);
   });
 });
-//show question
+
+// Route 11: Get all questions
 app.get("/api/showquestions", (req, res) => {
-  const query = `
-select*from child_development`;
+  const query = "SELECT * FROM child_development";
 
   db.query(query, (err, results) => {
     if (err) {
       console.error("Error fetching questions:", err);
       return res.status(500).json({ error: "Server error" });
     }
-    console.log(results);
     res.json(results);
   });
 });
-//admin verify
+
+// Route 12: Admin login
 app.post("/api/admin-login", (req, res) => {
   const { email, password } = req.body;
 
   const query = "SELECT * FROM admin_users WHERE email = ? AND password = ?";
-
   db.query(query, [email, password], (err, results) => {
     if (err)
       return res.status(500).json({ success: false, message: "Server error" });
@@ -506,9 +399,7 @@ app.post("/api/admin-login", (req, res) => {
   });
 });
 
-//admin pass change
-
-// Change Password Route
+// Route 13: Change password
 app.post("/api/change-password", (req, res) => {
   const { email, oldPassword, newPassword } = req.body;
 
@@ -534,7 +425,8 @@ app.post("/api/change-password", (req, res) => {
     });
   });
 });
-//filter question
+
+// Route 14: Filter questions by month
 app.get("/api/questions", (req, res) => {
   const { month } = req.query;
   let query = "SELECT * FROM child_development";
@@ -554,12 +446,11 @@ app.get("/api/questions", (req, res) => {
   });
 });
 
-// API: Update question field
+// Route 15: Update question
 app.put("/api/questions/:id", (req, res) => {
   const { id } = req.params;
   const { field, value } = req.body;
 
-  // Validate inputs
   if (!field || typeof value !== "string") {
     return res.status(400).json({ error: "Invalid field or value" });
   }
@@ -576,36 +467,66 @@ app.put("/api/questions/:id", (req, res) => {
   });
 });
 
-//security pin
+// Route 16: Verify PIN
 app.post("/api/verify-pin", (req, res) => {
   const { mobileNumber, securityPIN } = req.body;
+  console.log(`PIN Verification Request for: ${mobileNumber}`);
 
   if (!mobileNumber || !securityPIN) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Mobile number and PIN required" });
+    console.log("Missing mobileNumber or securityPIN");
+    return res.status(400).json({
+      success: false,
+      message: "Mobile number and PIN required",
+    });
   }
 
   const query = "SELECT security_pin FROM user_details WHERE mobile_number = ?";
+  console.log(`Executing query: ${query} with mobile: ${mobileNumber}`);
+
   db.query(query, [mobileNumber], (err, results) => {
     if (err) {
       console.error("DB error:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Database error" });
+      return res.status(500).json({
+        success: false,
+        message: "Database error",
+        errorDetails: err.message,
+      });
     }
 
+    console.log(`Query results: ${JSON.stringify(results)}`);
+
     if (results.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      console.log(`No user found with mobile: ${mobileNumber}`);
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
     const storedPin = results[0].security_pin;
+    console.log(`Stored PIN: ${storedPin}, Received PIN: ${securityPIN}`);
+
     if (securityPIN === storedPin) {
-      return res.json({ success: true, message: "PIN verified" });
+      console.log("PIN verification successful");
+      return res.json({
+        success: true,
+        message: "PIN verified",
+      });
     } else {
-      return res.json({ success: false, message: "Incorrect PIN" });
+      console.log("PIN verification failed");
+      return res.json({
+        success: false,
+        message: "Incorrect PIN",
+      });
     }
   });
+});
+// Default route for unmatched paths
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+// Start server (only once)
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
