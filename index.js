@@ -1,0 +1,229 @@
+// server.js (Cleaned & Updated)
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const mysql = require("mysql2");
+const twilio = require("twilio");
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Twilio Credentials (store these in .env for production)
+const accountSid = "AC2386df8e3b1afeae7dad935f23b51ab0";
+const authToken = "76b1d1984df91680aa99a778653fc462";
+const twilioNumber = "+12178035187";
+const client = twilio(accountSid, authToken);
+
+// Middleware
+app.use(cors());
+app.use(bodyParser.json());
+
+// MySQL DB Connection
+const db = mysql.createConnection({
+  host: "sql8.freesqldatabase.com",
+  user: "sql8785241",
+  password: "TY4g55mxyW", // Your MySQL password
+  database: "sql8785241",
+  port: 3306,
+});
+
+db.connect((err) => {
+  if (err) console.error("❌ Database connection error:", err);
+  else console.log("✅ Connected to MySQL");
+});
+
+// In-memory store for OTP
+const otpStore = {};
+
+// ================= Routes =================
+
+// Send OTP
+app.post("/send-otp", async (req, res) => {
+  const { mobileNumber } = req.body;
+  if (!mobileNumber)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number required" });
+
+  const otp = Math.floor(1000 + Math.random() * 9000).toString();
+  console.log(`Generated OTP for ${mobileNumber}: ${otp}`);
+
+  try {
+    await client.messages.create({
+      body: `Your OTP is: ${otp}`,
+      from: twilioNumber,
+      to: `+91${mobileNumber}`,
+    });
+    otpStore[mobileNumber] = otp;
+    res.json({ success: true, message: "OTP sent successfully" });
+  } catch (error) {
+    console.error("Twilio Error:", error);
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to send OTP",
+        error: error.message,
+      });
+  }
+});
+
+// Verify OTP
+app.post("/verify-otp", (req, res) => {
+  const { mobileNumber, otp } = req.body;
+  if (!mobileNumber || !otp)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number and OTP required" });
+
+  if (otpStore[mobileNumber] === otp) {
+    delete otpStore[mobileNumber];
+    return res.json({ success: true, message: "OTP verified successfully" });
+  }
+
+  return res.status(400).json({ success: false, message: "Invalid OTP" });
+});
+
+// Store Mobile Number (If Not Exists)
+app.post("/store-mobile", (req, res) => {
+  const { mobileNumber } = req.body;
+  if (!mobileNumber)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number is required" });
+
+  const checkQuery = `SELECT * FROM user_details WHERE mobile_number = ?`;
+  db.query(checkQuery, [mobileNumber], (err, results) => {
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    if (results.length > 0)
+      return res
+        .status(200)
+        .json({
+          success: false,
+          message: "Mobile already exists",
+          userExists: true,
+        });
+
+    const insertQuery = `INSERT INTO user_details (mobile_number, status) VALUES (?, 'pending')`;
+    db.query(insertQuery, [mobileNumber], (err2) => {
+      if (err2)
+        return res
+          .status(500)
+          .json({ success: false, message: "Insert error" });
+      res
+        .status(200)
+        .json({ success: true, message: "Mobile number stored successfully" });
+    });
+  });
+});
+
+// Delete specific user if status is pending
+// app.delete("/delete-pending-user", (req, res) => {
+//   const { mobileNumber } = req.body;
+//   if (!mobileNumber) return res.status(400).json({ success: false, message: "Mobile number required" });
+
+//   const deleteQuery = `DELETE FROM user_details WHERE mobile_number = ? AND LOWER(TRIM(status)) = 'pending'`;
+//   db.query(deleteQuery, [mobileNumber], (err, result) => {
+//     if (err) return res.status(500).json({ success: false, message: "Database error" });
+//     if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "No pending user found" });
+//     res.status(200).json({ success: true, message: `User ${mobileNumber} deleted` });
+//   });
+// });
+
+// Store user details
+app.post("/store-user-details", (req, res) => {
+  const {
+    mobileNumber,
+    fullName,
+    gender,
+    dob,
+    verifiedProof,
+    schoolId,
+    aadharNumber,
+    ageCategory,
+  } = req.body;
+  if (!mobileNumber)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number is required" });
+
+  const sql = `UPDATE user_details SET full_name = ?, gender = ?, dob = ?, verified_proof = ?, school_id = ?, aadhar_number = ?, age_category = ? WHERE mobile_number = ?`;
+  const values = [
+    fullName,
+    gender,
+    dob,
+    verifiedProof,
+    schoolId || null,
+    aadharNumber || null,
+    ageCategory,
+    mobileNumber,
+  ];
+
+  db.query(sql, values, (err, result) => {
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    if (result.affectedRows === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "Mobile number not found" });
+    res.json({ success: true, message: "User details updated successfully" });
+  });
+});
+
+// Set Security PIN
+app.post("/set-security-pin", (req, res) => {
+  const { mobileNumber, pin } = req.body;
+  if (!mobileNumber || !pin)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number and PIN required" });
+
+  const sql = `UPDATE user_details SET security_pin = ?, status = 'completed' WHERE mobile_number = ?`;
+  db.query(sql, [pin, mobileNumber], (err, result) => {
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    if (result.affectedRows === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "Mobile number not found" });
+    res.json({ success: true, message: "Security PIN saved" });
+  });
+});
+
+// Verify Security PIN
+app.post("/api/verify-pin", (req, res) => {
+  const { mobileNumber, securityPIN } = req.body;
+  if (!mobileNumber || !securityPIN)
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number and PIN required" });
+
+  const query = "SELECT security_pin FROM user_details WHERE mobile_number = ?";
+  db.query(query, [mobileNumber], (err, results) => {
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    if (results.length === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+
+    const storedPin = results[0].security_pin;
+    if (securityPIN === storedPin)
+      res.json({ success: true, message: "PIN verified" });
+    else res.json({ success: false, message: "Incorrect PIN" });
+  });
+});
+
+// Start Server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+});
