@@ -350,7 +350,7 @@ app.get("/api/questions/:month", (req, res) => {
   console.log(`📝 Fetching questions for month: ${decodedMonth}`);
   
   // Query to get questions for the specified month
-  const query = `SELECT * FROM questions WHERE month = ? ORDER BY question_id`;
+  const query = `SELECT * FROM child_development WHERE month = ? ORDER BY question_id`;
   
   db.query(query, [decodedMonth], (err, results) => {
     if (err) {
