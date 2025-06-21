@@ -504,9 +504,15 @@ app.post("/api/verify-pin", (req, res) => {
     }
 
     const storedPin = results[0].security_pin;
-    console.log(`Stored PIN: ${storedPin}, Received PIN: ${securityPIN}`);
+    console.log(`Stored PIN: "${storedPin}" (type: ${typeof storedPin}), Received PIN: "${securityPIN}" (type: ${typeof securityPIN})`);
 
-    if (securityPIN === storedPin) {
+    // Convert both to strings and trim whitespace for comparison
+    const normalizedStoredPin = String(storedPin || '').trim();
+    const normalizedReceivedPin = String(securityPIN || '').trim();
+    
+    console.log(`Normalized comparison - Stored: "${normalizedStoredPin}", Received: "${normalizedReceivedPin}"`);
+
+    if (normalizedReceivedPin === normalizedStoredPin && normalizedStoredPin !== '') {
       console.log("PIN verification successful");
       return res.json({
         success: true,
