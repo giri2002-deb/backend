@@ -1,4 +1,3 @@
-// server.js (Cleaned & Updated)
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
@@ -6,44 +5,49 @@ const mysql = require("mysql2");
 const twilio = require("twilio");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Twilio Credentials (store these in .env for production)
-const accountSid = "AC2386df8e3b1afeae7dad935f23b51ab0";
-const authToken = "76b1d1984df91680aa99a778653fc462";
-const twilioNumber = "+12178035187";
-const client = twilio(accountSid, authToken);
+const PORT = 5000;
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
-// MySQL DB Connection
 const db = mysql.createConnection({
   host: "sql8.freesqldatabase.com",
   user: "sql8785241",
   password: "TY4g55mxyW", // Your MySQL password
-  database: "child_development",
+  database: "sql8785241",
   port: 3306,
 });
 
 db.connect((err) => {
-  if (err) console.error("❌ Database connection error:", err);
-  else console.log("✅ Connected to MySQL");
+  if (err) {
+    console.error("❌ Database connection error:", err);
+  } else {
+    console.log("✅ Connected to MySQL");
+  }
 });
 
-// In-memory store for OTP
-const otpStore = {};
+// Twilio Configuration
+const accountSid = "AC2386df8e3b1afeae7dad935f23b51ab0";
+const authToken = "76b1d1984df91680aa99a778653fc462";
+const twilioNumber = "+12178035187";
+const client = twilio(accountSid, authToken);
 
-// ================= Routes =================
+// Temporary stores
+const otpStore = {}; // { "mobileNumber": "1234" }
+const registeredMobiles = new Set(); // [ "9876543210" ]
+
+// ==================== AUTHENTICATION ROUTES ====================
 
 // Send OTP
 app.post("/send-otp", async (req, res) => {
   const { mobileNumber } = req.body;
-  if (!mobileNumber)
+
+  if (!mobileNumber) {
     return res
       .status(400)
       .json({ success: false, message: "Mobile number required" });
+  }
 
   const otp = Math.floor(1000 + Math.random() * 9000).toString();
   console.log(`Generated OTP for ${mobileNumber}: ${otp}`);
@@ -54,6 +58,7 @@ app.post("/send-otp", async (req, res) => {
       from: twilioNumber,
       to: `+91${mobileNumber}`,
     });
+
     otpStore[mobileNumber] = otp;
     res.json({ success: true, message: "OTP sent successfully" });
   } catch (error) {
@@ -71,10 +76,12 @@ app.post("/send-otp", async (req, res) => {
 // Verify OTP
 app.post("/verify-otp", (req, res) => {
   const { mobileNumber, otp } = req.body;
-  if (!mobileNumber || !otp)
+
+  if (!mobileNumber || !otp) {
     return res
       .status(400)
       .json({ success: false, message: "Mobile number and OTP required" });
+  }
 
   if (otpStore[mobileNumber] === otp) {
     delete otpStore[mobileNumber];
@@ -84,73 +91,89 @@ app.post("/verify-otp", (req, res) => {
   return res.status(400).json({ success: false, message: "Invalid OTP" });
 });
 
-// Store Mobile Number (If Not Exists)
-app.post("/store-mobile", (req, res) => {
-  const { mobileNumber } = req.body;
-  if (!mobileNumber)
+// Verify Security PIN
+app.post("/api/verify-pin", (req, res) => {
+  const { mobileNumber, securityPIN } = req.body;
+
+  if (!mobileNumber || !securityPIN) {
     return res
       .status(400)
-      .json({ success: false, message: "Mobile number is required" });
+      .json({ success: false, message: "Mobile number and PIN required" });
+  }
 
-  const checkQuery = `SELECT * FROM user_details WHERE mobile_number = ?`;
-  db.query(checkQuery, [mobileNumber], (err, results) => {
-    if (err)
+  const query = "SELECT security_pin FROM user_details WHERE mobile_number = ?";
+  db.query(query, [mobileNumber], (err, results) => {
+    if (err) {
+      console.error("DB error:", err);
       return res
         .status(500)
         .json({ success: false, message: "Database error" });
-    if (results.length > 0)
+    }
+
+    if (results.length === 0) {
       return res
-        .status(200)
-        .json({
-          success: false,
-          message: "Mobile already exists",
-          userExists: true,
-        });
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const storedPin = results[0].security_pin;
+    if (securityPIN === storedPin) {
+      return res.json({ success: true, message: "PIN verified" });
+    } else {
+      return res.json({ success: false, message: "Incorrect PIN" });
+    }
+  });
+});
+
+// ==================== USER MANAGEMENT ROUTES ====================
+
+// Store Mobile Number
+app.post("/store-mobile", (req, res) => {
+  const { mobileNumber } = req.body;
+
+  if (!mobileNumber) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Mobile number is required" });
+  }
+
+  const checkQuery = `SELECT * FROM user_details WHERE mobile_number = ?`;
+
+  db.query(checkQuery, [mobileNumber], (err, results) => {
+    if (err) {
+      console.error("❌ Database check error:", err);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    }
+
+    if (results.length > 0) {
+      return res.status(200).json({
+        success: false,
+        message: "Mobile number already exists. Please login.",
+        userExists: true,
+      });
+    }
 
     const insertQuery = `INSERT INTO user_details (mobile_number, status) VALUES (?, 'pending')`;
-    db.query(insertQuery, [mobileNumber], (err2) => {
-      if (err2)
+
+    db.query(insertQuery, [mobileNumber], (insertErr) => {
+      if (insertErr) {
+        console.error("❌ Insert error:", insertErr);
         return res
           .status(500)
           .json({ success: false, message: "Insert error" });
-      res
-        .status(200)
-        .json({ success: true, message: "Mobile number stored successfully" });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Mobile number stored successfully",
+      });
     });
   });
 });
 
-// Delete all pending users
-app.delete("/delete-pending-users", (req, res) => {
-  const deleteQuery = `DELETE FROM user_details WHERE LOWER(TRIM(status)) = 'pending'`;
-  db.query(deleteQuery, (err, result) => {
-    if (err) {
-      console.error("Database error:", err);
-      return res.status(500).json({ success: false, message: "Database error" });
-    }
-    console.log(`🗑️ Deleted ${result.affectedRows} pending users`);
-    res.status(200).json({ 
-      success: true, 
-      message: `Deleted ${result.affectedRows} pending users`,
-      deletedCount: result.affectedRows
-    });
-  });
-});
-
-// Delete specific user if status is pending
-app.delete("/delete-pending-user", (req, res) => {
-  const { mobileNumber } = req.body;
-  if (!mobileNumber) return res.status(400).json({ success: false, message: "Mobile number required" });
-
-  const deleteQuery = `DELETE FROM user_details WHERE mobile_number = ? AND LOWER(TRIM(status)) = 'pending'`;
-  db.query(deleteQuery, [mobileNumber], (err, result) => {
-    if (err) return res.status(500).json({ success: false, message: "Database error" });
-    if (result.affectedRows === 0) return res.status(404).json({ success: false, message: "No pending user found" });
-    res.status(200).json({ success: true, message: `User ${mobileNumber} deleted` });
-  });
-});
-
-// Store user details
+// Update User Details
 app.post("/store-user-details", (req, res) => {
   const {
     mobileNumber,
@@ -162,12 +185,26 @@ app.post("/store-user-details", (req, res) => {
     aadharNumber,
     ageCategory,
   } = req.body;
-  if (!mobileNumber)
+
+  if (!mobileNumber) {
     return res
       .status(400)
       .json({ success: false, message: "Mobile number is required" });
+  }
 
-  const sql = `UPDATE user_details SET full_name = ?, gender = ?, dob = ?, verified_proof = ?, school_id = ?, aadhar_number = ?, age_category = ? WHERE mobile_number = ?`;
+  const sql = `
+    UPDATE user_details
+    SET 
+      full_name = ?, 
+      gender = ?, 
+      dob = ?, 
+      verified_proof = ?, 
+      school_id = ?, 
+      aadhar_number = ?, 
+      age_category = ?
+    WHERE mobile_number = ?
+  `;
+
   const values = [
     fullName,
     gender,
@@ -180,14 +217,19 @@ app.post("/store-user-details", (req, res) => {
   ];
 
   db.query(sql, values, (err, result) => {
-    if (err)
+    if (err) {
+      console.error("❌ Update Error:", err);
       return res
         .status(500)
         .json({ success: false, message: "Database error" });
-    if (result.affectedRows === 0)
+    }
+
+    if (result.affectedRows === 0) {
       return res
         .status(404)
         .json({ success: false, message: "Mobile number not found" });
+    }
+
     res.json({ success: true, message: "User details updated successfully" });
   });
 });
@@ -195,190 +237,285 @@ app.post("/store-user-details", (req, res) => {
 // Set Security PIN
 app.post("/set-security-pin", (req, res) => {
   const { mobileNumber, pin } = req.body;
-  if (!mobileNumber || !pin)
+
+  if (!mobileNumber || !pin) {
     return res
       .status(400)
-      .json({ success: false, message: "Mobile number and PIN required" });
+      .json({ success: false, message: "Mobile number and PIN are required" });
+  }
 
   const sql = `UPDATE user_details SET security_pin = ?, status = 'completed' WHERE mobile_number = ?`;
+
   db.query(sql, [pin, mobileNumber], (err, result) => {
-    if (err)
+    if (err) {
+      console.error("❌ PIN update error:", err);
       return res
         .status(500)
         .json({ success: false, message: "Database error" });
-    if (result.affectedRows === 0)
+    }
+
+    if (result.affectedRows === 0) {
       return res
         .status(404)
         .json({ success: false, message: "Mobile number not found" });
-    res.json({ success: true, message: "Security PIN saved" });
-  });
-});
-
-// Verify Security PIN
-app.post("/api/verify-pin", (req, res) => {
-  const { mobileNumber, securityPIN } = req.body;
-  if (!mobileNumber || !securityPIN)
-    return res
-      .status(400)
-      .json({ success: false, message: "Mobile number and PIN required" });
-
-  const query = "SELECT security_pin FROM user_details WHERE mobile_number = ?";
-  db.query(query, [mobileNumber], (err, results) => {
-    if (err)
-      return res
-        .status(500)
-        .json({ success: false, message: "Database error" });
-    if (results.length === 0)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-
-    const storedPin = results[0].security_pin;
-    if (securityPIN === storedPin)
-      res.json({ success: true, message: "PIN verified" });
-    else res.json({ success: false, message: "Incorrect PIN" });
-  });
-});
-
-// Create questions table and populate with sample data
-app.post("/api/setup-questions", (req, res) => {
-  const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS questions (
-      question_id INT AUTO_INCREMENT PRIMARY KEY,
-      month VARCHAR(50) NOT NULL,
-      question_text TEXT NOT NULL,
-      option_a VARCHAR(255),
-      option_b VARCHAR(255),
-      option_c VARCHAR(255),
-      option_d VARCHAR(255),
-      correct_answer CHAR(1),
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `;
-  
-  db.query(createTableQuery, (err) => {
-    if (err) {
-      console.error("Error creating table:", err);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Failed to create table", 
-        error: err.message 
-      });
     }
-    
-    // Insert sample questions
-    const sampleQuestions = [
-      {
-        month: 'Month 1',
-        question_text: 'What is the most important factor in child development?',
-        option_a: 'Nutrition',
-        option_b: 'Play and interaction',
-        option_c: 'Sleep',
-        option_d: 'All of the above',
-        correct_answer: 'D'
-      },
-      {
-        month: 'Month 1',
-        question_text: 'At what age do children typically start walking?',
-        option_a: '8-10 months',
-        option_b: '10-12 months',
-        option_c: '12-15 months',
-        option_d: '15-18 months',
-        correct_answer: 'C'
-      },
-      {
-        month: 'Month 2',
-        question_text: 'Which activity helps develop fine motor skills?',
-        option_a: 'Running',
-        option_b: 'Drawing and coloring',
-        option_c: 'Jumping',
-        option_d: 'Swimming',
-        correct_answer: 'B'
-      },
-      {
-        month: 'Month 2',
-        question_text: 'What is the recommended screen time for children under 2?',
-        option_a: '1 hour per day',
-        option_b: '2 hours per day',
-        option_c: 'No screen time except video calls',
-        option_d: 'Unlimited',
-        correct_answer: 'C'
-      }
-    ];
-    
-    const insertQuery = `
-      INSERT IGNORE INTO questions (month, question_text, option_a, option_b, option_c, option_d, correct_answer) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    
-    let insertedCount = 0;
-    sampleQuestions.forEach((question, index) => {
-      db.query(insertQuery, [
-        question.month,
-        question.question_text,
-        question.option_a,
-        question.option_b,
-        question.option_c,
-        question.option_d,
-        question.correct_answer
-      ], (err2) => {
-        if (err2) {
-          console.error("Error inserting question:", err2);
-        } else {
-          insertedCount++;
-        }
-        
-        // Send response after all questions are processed
-        if (index === sampleQuestions.length - 1) {
-          res.status(200).json({ 
-            success: true, 
-            message: `Questions table created successfully. Inserted ${insertedCount} sample questions.`
-          });
-        }
-      });
+
+    res.json({
+      success: true,
+      message: "Security PIN saved successfully (plain text)",
     });
   });
 });
 
-// Get questions by month
+// Get All Users
+app.get("/api/all-users", (req, res) => {
+  const query = "SELECT * FROM user_details ORDER BY id ASC";
+  db.query(query, (err, results) => {
+    if (err) return res.status(500).json({ message: "Database error" });
+    res.json(results);
+  });
+});
+
+// Delete Pending Users
+app.delete("/delete-pending-users", (req, res) => {
+  const deleteQuery = `DELETE FROM user_details WHERE LOWER(TRIM(status)) = 'pending'`;
+
+  db.query(deleteQuery, (deleteErr, deleteResult) => {
+    if (deleteErr) {
+      console.error("❌ Delete error:", deleteErr);
+      return res
+        .status(500)
+        .json({
+          success: false,
+          message: "Database error while deleting pending users",
+        });
+    }
+
+    console.log(`🗑️ Deleted ${deleteResult.affectedRows} pending users`);
+    return res.status(200).json({
+      success: true,
+      message: `${deleteResult.affectedRows} pending users deleted successfully`,
+    });
+  });
+});
+
+// ==================== QUESTIONNAIRE ROUTES ====================
+
+// Get Questions by Month
 app.get("/api/questions/:month", (req, res) => {
-  const { month } = req.params;
-  
-  // Decode the month parameter in case it's URL encoded
-  const decodedMonth = decodeURIComponent(month);
-  
-  console.log(`📝 Fetching questions for month: ${decodedMonth}`);
-  
-  // Query to get questions for the specified month
-  const query = `SELECT * FROM child_development WHERE month = ? ORDER BY question_id`;
-  
-  db.query(query, [decodedMonth], (err, results) => {
+  const month = req.params.month;
+  db.query(
+    "SELECT * FROM child_development WHERE month = ?",
+    [month],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: "DB error" });
+      if (rows.length === 0)
+        return res.status(404).json({ error: "No questions found" });
+
+      const row = rows[0];
+      const domains = [
+        "comprehension",
+        "verbal_expression",
+        "non_verbal_expression",
+        "physical_development",
+        "cognitive_development",
+        "fine_motor_skills",
+        "gross_motor_skills",
+        "emotional_development",
+        "swallowing_development",
+        "social_development",
+      ];
+
+      const questions = domains
+        .map((key) => ({ domain: key, question: row[key] }))
+        .filter((q) => !!q.question);
+
+      res.json({ month, questions });
+    },
+  );
+});
+
+// Filter Questions
+app.get("/api/questions", (req, res) => {
+  const { month } = req.query;
+  let query = "SELECT * FROM child_development";
+  const params = [];
+
+  if (month) {
+    query += " WHERE month = ?";
+    params.push(month);
+  }
+
+  db.query(query, params, (err, results) => {
     if (err) {
-      console.error("Database error:", err);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Database error", 
-        error: err.message 
+      console.error("❌ Error fetching questions:", err);
+      return res.status(500).json({ error: "Failed to fetch questions" });
+    }
+    res.json(results);
+  });
+});
+
+// Update Question
+app.put("/api/questions/:id", (req, res) => {
+  const { id } = req.params;
+  const { field, value } = req.body;
+
+  if (!field || typeof value !== "string") {
+    return res.status(400).json({ error: "Invalid field or value" });
+  }
+
+  const query = `UPDATE child_development SET ?? = ? WHERE id = ?`;
+  const values = [field, value, id];
+
+  db.query(query, values, (err, result) => {
+    if (err) {
+      console.error("❌ Update error:", err);
+      return res.status(500).json({ error: "Failed to update question" });
+    }
+    res.json({ message: "✅ Question updated successfully" });
+  });
+});
+
+// Show All Questions
+app.get("/api/showquestions", (req, res) => {
+  const query = `SELECT * FROM child_development`;
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error("Error fetching questions:", err);
+      return res.status(500).json({ error: "Server error" });
+    }
+    res.json(results);
+  });
+});
+
+// Submit Answers
+app.post("/submit-answers", (req, res) => {
+  const { username, mobileNumber, answers } = req.body;
+
+  const query = `
+    INSERT INTO user_domain_answers (
+      username, mobileNumber,
+      comprehension_q, comprehension_a,
+      verbal_expression_q, verbal_expression_a,
+      non_verbal_expression_q, non_verbal_expression_a,
+      physical_development_q, physical_development_a,
+      cognitive_development_q, cognitive_development_a,
+      fine_motor_skills_q, fine_motor_skills_a,
+      gross_motor_skills_q, gross_motor_skills_a,
+      emotional_development_q, emotional_development_a,
+      swallowing_development_q, swallowing_development_a,
+      social_development_q, social_development_a
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    username,
+    mobileNumber,
+    answers.comprehension?.question || "",
+    answers.comprehension?.answer || "",
+    answers.verbal_expression?.question || "",
+    answers.verbal_expression?.answer || "",
+    answers.non_verbal_expression?.question || "",
+    answers.non_verbal_expression?.answer || "",
+    answers.physical_development?.question || "",
+    answers.physical_development?.answer || "",
+    answers.cognitive_development?.question || "",
+    answers.cognitive_development?.answer || "",
+    answers.fine_motor_skills?.question || "",
+    answers.fine_motor_skills?.answer || "",
+    answers.gross_motor_skills?.question || "",
+    answers.gross_motor_skills?.answer || "",
+    answers.emotional_development?.question || "",
+    answers.emotional_development?.answer || "",
+    answers.swallowing_development?.question || "",
+    answers.swallowing_development?.answer || "",
+    answers.social_development?.question || "",
+    answers.social_development?.answer || "",
+  ];
+
+  db.query(query, values, (err, result) => {
+    if (err) {
+      console.error("Database insert failed:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Database insert failed.",
+        error: err.sqlMessage || err.message,
       });
     }
-    
-    if (results.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: `No questions found for month: ${decodedMonth}` 
-      });
+
+    res.json({ success: true, message: "Answers submitted successfully" });
+  });
+});
+
+// Get User Domain Answers
+app.get("/api/user-domain-answers/:mobile", (req, res) => {
+  const { mobile } = req.params;
+
+  const query =
+    "SELECT * FROM user_domain_answers WHERE mobileNumber = ? LIMIT 1";
+  db.query(query, [mobile], (err, result) => {
+    if (err) {
+      console.error("DB error:", err);
+      return res.status(500).json({ error: "Database error" });
     }
-    
-    res.status(200).json({ 
-      success: true, 
-      data: results,
-      count: results.length,
-      month: decodedMonth
+    if (result.length === 0) {
+      return res.status(404).json({ error: "No data found" });
+    }
+    res.json(result[0]);
+  });
+});
+
+// ==================== ADMIN ROUTES ====================
+
+// Admin Login
+app.post("/api/admin-login", (req, res) => {
+  const { email, password } = req.body;
+
+  const query = "SELECT * FROM admin_users WHERE email = ? AND password = ?";
+
+  db.query(query, [email, password], (err, results) => {
+    if (err)
+      return res.status(500).json({ success: false, message: "Server error" });
+
+    if (results.length > 0) {
+      res.status(200).json({ success: true });
+    } else {
+      res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
+    }
+  });
+});
+
+// Admin Change Password
+app.post("/api/change-password", (req, res) => {
+  const { email, oldPassword, newPassword } = req.body;
+
+  if (!email || !oldPassword || !newPassword) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  const checkUserQuery = "SELECT * FROM admin_users WHERE email = ?";
+  db.query(checkUserQuery, [email], (err, results) => {
+    if (err) return res.status(500).json({ message: "Database error" });
+    if (results.length === 0)
+      return res.status(404).json({ message: "Admin not found" });
+
+    const admin = results[0];
+    if (admin.password !== oldPassword) {
+      return res.status(401).json({ message: "Incorrect old password" });
+    }
+
+    const updateQuery = "UPDATE admin_users SET password = ? WHERE email = ?";
+    db.query(updateQuery, [newPassword, email], (updateErr) => {
+      if (updateErr) return res.status(500).json({ message: "Update failed" });
+      res.json({ message: "Password changed successfully" });
     });
   });
 });
 
 // Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://0.0.0.0:${PORT}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
