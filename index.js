@@ -305,7 +305,7 @@ app.delete("/delete-pending-users", (req, res) => {
 app.get("/api/questions/:month", (req, res) => {
   const month = req.params.month;
   db.query(
-    "SELECT * FROM child_development WHERE month = ?",
+    "SELECT * FROM questions WHERE month = ?",
     [month],
     (err, rows) => {
       if (err) return res.status(500).json({ error: "DB error" });
@@ -338,7 +338,7 @@ app.get("/api/questions/:month", (req, res) => {
 // Filter Questions
 app.get("/api/questions", (req, res) => {
   const { month } = req.query;
-  let query = "SELECT * FROM child_development";
+  let query = "SELECT * FROM questions";
   const params = [];
 
   if (month) {
@@ -364,7 +364,7 @@ app.put("/api/questions/:id", (req, res) => {
     return res.status(400).json({ error: "Invalid field or value" });
   }
 
-  const query = `UPDATE child_development SET ?? = ? WHERE id = ?`;
+  const query = `UPDATE questions SET ?? = ? WHERE id = ?`;
   const values = [field, value, id];
 
   db.query(query, values, (err, result) => {
@@ -378,7 +378,7 @@ app.put("/api/questions/:id", (req, res) => {
 
 // Show All Questions
 app.get("/api/showquestions", (req, res) => {
-  const query = `SELECT * FROM child_development`;
+  const query = `SELECT * FROM questions`;
   db.query(query, (err, results) => {
     if (err) {
       console.error("Error fetching questions:", err);
