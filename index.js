@@ -341,29 +341,21 @@ app.post("/submit-answers", (req, res) => {
 
 // Route 9: Get all users
 app.get("/api/all-users", (req, res) => {
-  const query = "SELECT * FROM user_details ORDER BY id ASC";
+  const query = `
+    SELECT *
+    FROM user_domain_answers a
+    INNER JOIN (
+      SELECT MAX(id) AS max_id
+      FROM user_domain_answers
+      GROUP BY mobileNumber
+    ) b ON a.id = b.max_id
+    ORDER BY a.id DESC
+  `;
+
   db.query(query, (err, results) => {
-    if (err) return res.status(500).json({ message: "Database error" });
+    if (err)
+      return res.status(500).json({ message: "Database error", error: err });
     res.json(results);
-  });
-});
-
-// Route 10: Get user domain answers
-app.get("/api/user-domain-answers/:mobileNumber", (req, res) => {
-  const { mobileNumber } = req.params;
-
-  const query = "SELECT * FROM user_domain_answers WHERE mobileNumber = ?";
-  db.query(query, [mobileNumber], (err, results) => {
-    if (err) {
-      console.error("DB error:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-
-    if (results.length === 0) {
-      return res.status(404).json({ error: "No data found" });
-    }
-
-    res.json(results[0]);
   });
 });
 
@@ -470,63 +462,37 @@ app.put("/api/questions/:id", (req, res) => {
 // Route 16: Verify PIN
 app.post("/api/verify-pin", (req, res) => {
   const { mobileNumber, securityPIN } = req.body;
-  console.log(`PIN Verification Request for: ${mobileNumber}`);
+  console.log(
+    "PIN Verification Request for:",
+    mobileNumber,
+    "PIN:",
+    securityPIN,
+  );
 
   if (!mobileNumber || !securityPIN) {
-    console.log("Missing mobileNumber or securityPIN");
-    return res.status(400).json({
-      success: false,
-      message: "Mobile number and PIN required",
-    });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing mobileNumber or securityPIN" });
   }
 
   const query = "SELECT security_pin FROM user_details WHERE mobile_number = ?";
-  console.log(`Executing query: ${query} with mobile: ${mobileNumber}`);
-
   db.query(query, [mobileNumber], (err, results) => {
-    if (err) {
-      console.error("DB error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Database error",
-        errorDetails: err.message,
-      });
-    }
-
-    console.log(`Query results: ${JSON.stringify(results)}`);
-
-    if (results.length === 0) {
-      console.log(`No user found with mobile: ${mobileNumber}`);
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (err)
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
+    if (results.length === 0)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
 
     const storedPin = results[0].security_pin;
-    console.log(`Stored PIN: "${storedPin}" (type: ${typeof storedPin}), Received PIN: "${securityPIN}" (type: ${typeof securityPIN})`);
-
-    // Convert both to strings and trim whitespace for comparison
-    const normalizedStoredPin = String(storedPin || '').trim();
-    const normalizedReceivedPin = String(securityPIN || '').trim();
-    
-    console.log(`Normalized comparison - Stored: "${normalizedStoredPin}", Received: "${normalizedReceivedPin}"`);
-
-    if (normalizedReceivedPin === normalizedStoredPin && normalizedStoredPin !== '') {
-      console.log("PIN verification successful");
-      return res.json({
-        success: true,
-        message: "PIN verified",
-      });
-    } else {
-      console.log("PIN verification failed");
-      return res.json({
-        success: false,
-        message: "Incorrect PIN",
-      });
-    }
+    if (securityPIN === storedPin)
+      res.json({ success: true, message: "PIN verified" });
+    else res.json({ success: false, message: "Incorrect PIN" });
   });
 });
+
 // Default route for unmatched paths
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
