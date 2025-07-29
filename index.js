@@ -291,8 +291,8 @@ app.post("/api/upload-image", upload.single("image"), async (req, res) => {
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
     const fileExt = file.originalname.split(".").pop();
-    const fileName = ${Date.now()}.${fileExt};
-    const filePath = ${fileName};
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -387,7 +387,7 @@ app.post(
         return res.status(400).json({ error: "Main image is required" });
 
       // 📤 Upload main image
-      const mainFileName = main-${Date.now()}${path.extname(mainImageFile.originalname)};
+      const mainFileName = `main-${Date.now()}${path.extname(mainImageFile.originalname)}`;
       const { error: mainErr } = await supabase.storage
         .from(BUCKET)
         .upload(mainFileName, mainImageFile.buffer, {
@@ -404,7 +404,7 @@ app.post(
       // 📤 Upload gallery images
       const galleryUrls = [];
       for (const file of galleryFiles) {
-        const filename = gallery-${Date.now()}-${file.originalname};
+        const filename = `gallery-${Date.now()}-${file.originalname}`;
         const { error: galleryErr } = await supabase.storage
           .from(BUCKET)
           .upload(filename, file.buffer, {
@@ -524,5 +524,5 @@ app.put("/api/products/convert/:id", async (req, res) => {
 
 // ✅ Start server
 app.listen(port, () => {
-  console.log(🚀 Server running at http://localhost:${port});
+  console.log(`🚀 Server running at http://localhost:${port}`);
 });
