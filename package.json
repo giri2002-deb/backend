@@ -2,14 +2,12 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
-
   "scripts": {
-    "build": "npm install --legacy-peer-deps && next build",
+    "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start"
-  }
-,
+  },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.2",
@@ -46,7 +44,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "cors": "^2.8.5",
-    "date-fns": "4.1.0",
+    "date-fns": "^3.3.1",
     "dotenv": "^17.2.0",
     "embla-carousel-react": "8.5.1",
     "express": "^5.1.0",
@@ -87,4 +85,3 @@
     "typescript": "^5"
   }
 }
-
