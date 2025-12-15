@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename)
 // Initialize Express app
 const app = express()
 const PORT = process.env.PORT || 5000
-app.use(express.json({ limit: "1000mb" }));
+app.use(express.json({ limit: "10000mb" }));
 app.use(express.urlencoded({ limit: "1000mb", extended: true }));
 // Middleware
 
@@ -37,257 +37,417 @@ const kccdataFilePath = path.join(__dirname, 'components', 'data', 'kccdata.json
 const kccahdataFilePath = path.join(__dirname, 'components', 'data', 'kccahdata.json')
 app.get('/api/kccahdata', async (req, res) => {
   try {
-    console.log("GET /api/kccahdata hit");
-    const data = await fs.readJson(kccahdataFilePath);
-    res.json(data);
-  } catch (error) {
-    console.error('Error reading data:', error);
-    res.status(500).json({ error: 'Error reading data' });
+    const { data, error } = await supabase
+      .from('kccahdata')
+      .select('id, value')
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    if (error) throw error
+
+    res.json(data[0]?.value || {})
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch failed' })
   }
-});
+})
+
+
+
 app.post('/api/kccahdata', async (req, res) => {
   try {
-    const newData = req.body
+    console.log('✅ POST /api/kccdata HIT')
+    console.log('📦 Request body keys:', Object.keys(req.body))
 
-    console.log('🗑️  Deleting old JSON data and writing new data...')
+    const payload = req.body
 
-    // Directly write the new data (no reading/parsing)
-    await fs.writeJson(kccahdataFilePath, newData, { spaces: 2 })
+    // 1️⃣ Delete old data
+    const { error: deleteError } = await supabase
+      .from('kccahdata')
+      .delete()
+      .neq('id', 0)
 
-    console.log('✅ New data written to kccahdata.json')
-    res.status(201).json({ message: 'Data overwritten successfully.' })
-  } catch (error) {
-    console.error('❌ Error saving data:', error)
-    res.status(500).json({ error: 'Error saving data' })
+    if (deleteError) {
+      console.error('❌ Delete error:', deleteError)
+      return res.status(500).json({ error: deleteError.message })
+    }
+
+    // 2️⃣ Insert new JSON
+    const { data, error: insertError } = await supabase
+      .from('kccahdata')
+      .insert([{ value: payload }])
+
+    if (insertError) {
+      console.error('❌ Insert error:', insertError)
+      return res.status(500).json({ error: insertError.message })
+    }
+
+    res.status(201).json({
+      success: true,
+      id: data?.[0]?.id
+    })
+  } catch (err) {
+    console.error('🔥 Unexpected server error:', err)
+    res.status(500).json({
+      error: err.message || 'Unexpected error'
+    })
   }
 })
-// ✅ GET API to fetch KCC data
+
 app.get('/api/kccdata', async (req, res) => {
   try {
-    console.log("GET /api/kccdata hit");
-    const data = await fs.readJson(kccdataFilePath);
-    res.json(data);
-  } catch (error) {
-    console.error('Error reading data:', error);
-    res.status(500).json({ error: 'Error reading data' });
-  }
-});
-app.post('/api/kccdata', async (req, res) => {
-  try {
-    const newData = req.body
+    const { data, error } = await supabase
+      .from('kccdata')
+      .select('id, value')
+      .order('created_at', { ascending: false })
+      .limit(1)
 
-    console.log('🗑️  Deleting old JSON data and writing new data...')
+    if (error) throw error
 
-    // Directly write the new data (no reading/parsing)
-    await fs.writeJson(kccdataFilePath, newData, { spaces: 2 })
-
-    console.log('✅ New data written to kccdata.json')
-    res.status(201).json({ message: 'Data overwritten successfully.' })
-  } catch (error) {
-    console.error('❌ Error saving data:', error)
-    res.status(500).json({ error: 'Error saving data' })
+    res.json(data[0]?.value || {})
+  } catch (err) {
+    res.status(500).json({ error: 'Fetch failed' })
   }
 })
+
+
+
+app.post('/api/kccdata', async (req, res) => {
+  try {
+    console.log('✅ POST /api/kccdata HIT')
+    console.log('📦 Request body keys:', Object.keys(req.body))
+
+    const payload = req.body
+
+    // 1️⃣ Delete old data
+    const { error: deleteError } = await supabase
+      .from('kccdata')
+      .delete()
+      .neq('id', 0)
+
+    if (deleteError) {
+      console.error('❌ Delete error:', deleteError)
+      return res.status(500).json({ error: deleteError.message })
+    }
+
+    // 2️⃣ Insert new JSON
+    const { data, error: insertError } = await supabase
+      .from('kccdata')
+      .insert([{ value: payload }])
+
+    if (insertError) {
+      console.error('❌ Insert error:', insertError)
+      return res.status(500).json({ error: insertError.message })
+    }
+
+    res.status(201).json({
+      success: true,
+      id: data?.[0]?.id
+    })
+  } catch (err) {
+    console.error('🔥 Unexpected server error:', err)
+    res.status(500).json({
+      error: err.message || 'Unexpected error'
+    })
+  }
+})
+
+
+
+
 
 
 
 // ================= GOLD ROUTES =================
 
+// --- GET all records ---
 app.get('/api/gold', async (req, res) => {
   try {
-    const data = await fs.readJson(dataFilePath)
-    res.json(data)
-  } catch (err) {
-    console.error('Error reading gold data:', err)
-    res.status(500).json({ error: 'Failed to read gold data' })
-  }
-})
+    const { data, error } = await supabase
+      .from('resolutions')
+      .select('*')
+      .order('id', { ascending: true }); // ensure order
 
+    if (error) throw error;
+
+    res.json(data); // send array directly
+  } catch (err) {
+    console.error('Error fetching data:', err);
+    res.status(500).json({ error: 'Failed to fetch gold data' });
+  }
+});
+
+// --- GET single record by ID ---
+app.get('/api/gold/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const { data, error } = await supabase
+      .from('resolutions')
+      .select('*')
+      .eq('id', id)
+      .single(); // <-- use .single() to get one object
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Record not found' });
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching record:', err);
+    res.status(500).json({ error: 'Failed to fetch record' });
+  }
+});
+
+// --- POST create new record ---
 app.post('/api/gold', async (req, res) => {
   try {
-    const newRecord = req.body
-    let data = []
-    if (await fs.pathExists(dataFilePath)) {
-      data = await fs.readJson(dataFilePath)
-    }
-    const maxId = data.reduce((max, item) => (item.id > max ? item.id : max), 0)
-    newRecord.id = maxId + 1
-    data.push(newRecord)
-    await fs.writeJson(dataFilePath, data, { spaces: 2 })
-    res.status(201).json(newRecord)
-  } catch (err) {
-    console.error('Error saving data:', err)
-    res.status(500).json({ error: 'Failed to save gold data' })
-  }
-})
+    const newRecord = req.body;
 
+    const { data, error } = await supabase
+      .from('resolutions')
+      .insert([newRecord])
+      .select()
+      .single(); // return inserted row as object
+
+    if (error) throw error;
+
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('Error saving data:', err);
+    res.status(500).json({ error: 'Failed to save record' });
+  }
+});
+
+// --- PUT update existing record ---
 app.put('/api/gold/:id', async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
-    const updatedRecord = req.body
-    const data = await fs.readJson(dataFilePath)
-    const index = data.findIndex(item => item.id === id)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Record not found' })
-    }
-    updatedRecord.id = id
-    data[index] = updatedRecord
-    await fs.writeJson(dataFilePath, data, { spaces: 2 })
-    res.json(updatedRecord)
-  } catch (err) {
-    console.error('Error updating data:', err)
-    res.status(500).json({ error: 'Failed to update record' })
-  }
-})
+    const id = parseInt(req.params.id);
+    const updatedRecord = req.body;
 
+    const { data, error } = await supabase
+      .from('resolutions')
+      .update(updatedRecord)
+      .eq('id', id)
+      .select()
+      .single(); // return updated row as object
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Record not found' });
+      throw error;
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error('Error updating data:', err);
+    res.status(500).json({ error: 'Failed to update record' });
+  }
+});
+
+// --- DELETE a record ---
 app.delete('/api/gold/:id', async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
-    const data = await fs.readJson(dataFilePath)
-    const index = data.findIndex(item => item.id === id)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Record not found' })
+    const id = parseInt(req.params.id);
+
+    const { data, error } = await supabase
+      .from('resolutions')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single(); // return deleted row as object
+
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Record not found' });
+      throw error;
     }
-    data.splice(index, 1)
-    await fs.writeJson(dataFilePath, data, { spaces: 2 })
-    res.json({ message: 'Record deleted successfully' })
+
+    res.json({ message: 'Record deleted successfully', record: data });
   } catch (err) {
-    console.error('Error deleting data:', err)
-    res.status(500).json({ error: 'Failed to delete record' })
+    console.error('Error deleting data:', err);
+    res.status(500).json({ error: 'Failed to delete record' });
   }
-})
+});
 
 // ================= ANIMAL ROUTES =================
 
 app.get('/api/animal', async (req, res) => {
   try {
-    const data = await fs.readJson(animalFilePath)
-    res.json(data)
-  } catch (err) {
-    console.error('Error reading animal data:', err)
-    res.status(500).json({ error: 'Failed to read animal data' })
-  }
-})
+    const { data, error } = await supabase
+      .from('animal_records')
+      .select('*')
+      .order('id', { ascending: true });
 
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching animal data:', err);
+    res.status(500).json({ error: 'Failed to fetch animal data' });
+  }
+});
+
+// --- GET single record ---
+app.get('/api/animal/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { data, error } = await supabase
+      .from('animal_records')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching single animal record:', err);
+    res.status(500).json({ error: 'Failed to fetch animal record' });
+  }
+});
+
+// --- POST new record ---
 app.post('/api/animal', async (req, res) => {
   try {
-    const newRecord = req.body
-    let data = []
-    if (await fs.pathExists(animalFilePath)) {
-      data = await fs.readJson(animalFilePath)
-    }
-    const maxId = data.reduce((max, item) => (item.id > max ? item.id : max), 0)
-    newRecord.id = maxId + 1
-    data.push(newRecord)
-    await fs.writeJson(animalFilePath, data, { spaces: 2 })
-    res.status(201).json(newRecord)
-  } catch (err) {
-    console.error('Error saving animal data:', err)
-    res.status(500).json({ error: 'Failed to save animal data' })
-  }
-})
+    const newRecord = req.body;
+    const { data, error } = await supabase
+      .from('animal_records')
+      .insert([newRecord])
+      .select()
+      .single();
 
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    console.error('Error creating animal record:', err);
+    res.status(500).json({ error: 'Failed to create animal record' });
+  }
+});
+
+// --- PUT update record ---
 app.put('/api/animal/:id', async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
-    const updatedRecord = req.body
-    const data = await fs.readJson(animalFilePath)
-    const index = data.findIndex(item => item.id === id)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Animal record not found' })
-    }
-    updatedRecord.id = id
-    data[index] = updatedRecord
-    await fs.writeJson(animalFilePath, data, { spaces: 2 })
-    res.json(updatedRecord)
-  } catch (err) {
-    console.error('Error updating animal data:', err)
-    res.status(500).json({ error: 'Failed to update animal record' })
-  }
-})
+    const id = parseInt(req.params.id);
+    const updatedRecord = req.body;
 
+    const { data, error } = await supabase
+      .from('animal_records')
+      .update(updatedRecord)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error updating animal record:', err);
+    res.status(500).json({ error: 'Failed to update animal record' });
+  }
+});
+
+// --- DELETE record ---
 app.delete('/api/animal/:id', async (req, res) => {
   try {
-    const id = parseInt(req.params.id)
-    const data = await fs.readJson(animalFilePath)
-    const index = data.findIndex(item => item.id === id)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Animal record not found' })
-    }
-    data.splice(index, 1)
-    await fs.writeJson(animalFilePath, data, { spaces: 2 })
-    res.json({ message: 'Animal record deleted successfully' })
+    const id = parseInt(req.params.id);
+    const { data, error } = await supabase
+      .from('animal_records')
+      .delete()
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json({ message: 'Animal record deleted successfully', record: data });
   } catch (err) {
-    console.error('Error deleting animal data:', err)
-    res.status(500).json({ error: 'Failed to delete animal record' })
+    console.error('Error deleting animal record:', err);
+    res.status(500).json({ error: 'Failed to delete animal record' });
   }
-})
+});
 
 // ================= CROPS ROUTES =================
 
 app.get('/api/crops', async (req, res) => {
   try {
-    const data = await fs.readJson(cropsFilePath)
-    res.json(data)
+    const { data, error } = await supabase
+      .from('crops_records')
+      .select('*')
+      .order('crop_code', { ascending: true });
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('Error reading crop data:', err)
-    res.status(500).json({ error: 'Failed to read crop data' })
+    console.error('Error fetching crop data:', err);
+    res.status(500).json({ error: 'Failed to fetch crop data' });
   }
-})
+});
 
+// --- GET single crop ---
+app.get('/api/crops/:id', async (req, res) => {
+  try {
+    const crop_code = parseInt(req.params.id);
+    const { data, error } = await supabase
+      .from('crops_records')
+      .select('*')
+      .eq('crop_code', crop_code)
+      .single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error('Error fetching single crop record:', err);
+    res.status(500).json({ error: 'Failed to fetch crop record' });
+  }
+});
+
+// --- POST new crop ---
 app.post('/api/crops', async (req, res) => {
   try {
-    const newRecord = req.body
-    let data = []
-    if (await fs.pathExists(cropsFilePath)) {
-      data = await fs.readJson(cropsFilePath)
-    }
-    const maxId = data.reduce((max, item) => (item.crop_code > max ? item.crop_code : max), 0)
-    newRecord.crop_code = maxId + 1
-    data.push(newRecord)
-    await fs.writeJson(cropsFilePath, data, { spaces: 2 })
-    res.status(201).json(newRecord)
+    const newRecord = req.body;
+    const { data, error } = await supabase
+      .from('crops_records')
+      .insert([newRecord])
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(data);
   } catch (err) {
-    console.error('Error saving crop data:', err)
-    res.status(500).json({ error: 'Failed to save crop data' })
+    console.error('Error creating crop record:', err);
+    res.status(500).json({ error: 'Failed to create crop record' });
   }
-})
+});
 
+// --- PUT update crop ---
 app.put('/api/crops/:id', async (req, res) => {
   try {
-    const crop_code = parseInt(req.params.id)
-    const updatedRecord = req.body
-    const data = await fs.readJson(cropsFilePath)
-    const index = data.findIndex(item => item.crop_code === crop_code)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Crop record not found' })
-    }
-    updatedRecord.crop_code = crop_code
-    data[index] = updatedRecord
-    await fs.writeJson(cropsFilePath, data, { spaces: 2 })
-    res.json(updatedRecord)
+    const crop_code = parseInt(req.params.id);
+    const updatedRecord = req.body;
+    const { data, error } = await supabase
+      .from('crops_records')
+      .update(updatedRecord)
+      .eq('crop_code', crop_code)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json(data);
   } catch (err) {
-    console.error('Error updating crop data:', err)
-    res.status(500).json({ error: 'Failed to update crop record' })
+    console.error('Error updating crop record:', err);
+    res.status(500).json({ error: 'Failed to update crop record' });
   }
-})
+});
 
+// --- DELETE crop ---
 app.delete('/api/crops/:id', async (req, res) => {
   try {
-    const crop_code = parseInt(req.params.id)
-    const data = await fs.readJson(cropsFilePath)
-    const index = data.findIndex(item => item.crop_code === crop_code)
-    if (index === -1) {
-      return res.status(404).json({ error: 'Crop record not found' })
-    }
-    data.splice(index, 1)
-    await fs.writeJson(cropsFilePath, data, { spaces: 2 })
-    res.json({ message: 'Crop record deleted successfully' })
+    const crop_code = parseInt(req.params.id);
+    const { data, error } = await supabase
+      .from('crops_records')
+      .delete()
+      .eq('crop_code', crop_code)
+      .select()
+      .single();
+    if (error) throw error;
+    res.json({ message: 'Crop record deleted successfully', record: data });
   } catch (err) {
-    console.error('Error deleting crop data:', err)
-    res.status(500).json({ error: 'Failed to delete crop record' })
+    console.error('Error deleting crop record:', err);
+    res.status(500).json({ error: 'Failed to delete crop record' });
   }
-})
+});
+
 
 // ================= SUPABASE FORM SUBMIT =================
 
@@ -706,4 +866,5 @@ app.listen(PORT, () => {
 console.log("Supabase Key exists:", !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 })
+
 
